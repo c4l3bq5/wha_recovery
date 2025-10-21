@@ -1,183 +1,175 @@
 const axios = require('axios');
 
-/**
- * Cliente para comunicarse con el API principal
- */
-class ApiClientService {
+const MAIN_API_URL = process.env.MAIN_API_URL || 'http://localhost:3000/api';
+const MASTER_TOKEN = process.env.API_MASTER_TOKEN; // Token para autenticación entre servicios
+
+class ApiClient {
   constructor() {
-    this.baseUrl = process.env.MAIN_API_URL;
-    this.masterToken = process.env.API_MASTER_TOKEN;
-    
     this.client = axios.create({
-      baseURL: this.baseUrl,
+      baseURL: MAIN_API_URL,
+      timeout: 10000,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.masterToken}`
-      },
-      timeout: 10000 // 10 segundos
+        // Agregar token de autorización para llamadas entre servicios
+        ...(MASTER_TOKEN && { 'Authorization': `Bearer ${MASTER_TOKEN}` })
+      }
     });
 
-    // Interceptor para logging
+    // Interceptor para logs
     this.client.interceptors.request.use(
       (config) => {
-        console.log(`[API Request] ${config.method.toUpperCase()} ${config.url}`);
+        console.log(`📤 API Request: ${config.method.toUpperCase()} ${config.url}`);
         return config;
       },
       (error) => {
-        console.error('[API Request Error]', error);
+        console.error('📤 API Request Error:', error.message);
         return Promise.reject(error);
       }
     );
 
     this.client.interceptors.response.use(
       (response) => {
-        console.log(`[API Response] ${response.status} ${response.config.url}`);
+        console.log(`📥 API Response: ${response.status} ${response.config.url}`);
         return response;
       },
       (error) => {
-        console.error('[API Response Error]', error.response?.data || error.message);
+        console.error('📥 API Response Error:', error.response?.status, error.message);
         return Promise.reject(error);
       }
     );
   }
 
-  /**
-   * Busca usuario por CI o email
-   */
-  async findUserByIdentifier(identifier) {
-    try {
-      // Buscar en persons usando el endpoint de búsqueda
-      const response = await this.client.get('/persons/search', {
-        params: { q: identifier }
-      });
-
-      if (!response.data || response.data.length === 0) {
-        return null;
-      }
-
-      // Obtener el primer resultado
-      const person = response.data[0];
-
-      // Ahora obtener el usuario asociado a esta persona
-      const userResponse = await this.client.get('/users', {
-        params: { persona_id: person.id }
-      });
-
-      if (!userResponse.data || userResponse.data.length === 0) {
-        return null;
-      }
-
-      const user = userResponse.data[0];
-
-      // Combinar datos de persona y usuario
-      return {
-        usuario_id: user.id,
-        usuario: user.usuario,
-        persona_id: person.id,
-        ci: person.ci,
-        mail: person.mail,
-        telefono: person.telefono,
-        nombre: person.nombre,
-        a_paterno: person.a_paterno,
-        a_materno: person.a_materno,
-        activo: user.activo
-      };
-
-    } catch (error) {
-      console.error('Error en findUserByIdentifier:', error);
-      
-      // Si es 404, el usuario no existe
-      if (error.response?.status === 404) {
-        return null;
-      }
-      
-      throw error;
-    }
-  }
+  // ==================== MÉTODOS DE USUARIO ====================
 
   /**
-   * Actualiza la contraseña de un usuario
+   * Obtener usuario por ID
    */
-  async updatePassword(userId, newPassword) {
-    try {
-      const response = await this.client.put(`/users/${userId}`, {
-        contrasena: newPassword
-      });
-
-      return response.status === 200;
-
-    } catch (error) {
-      console.error('Error en updatePassword:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Cierra todas las sesiones de un usuario
-   */
-  async closeAllUserSessions(userId) {
-    try {
-      const response = await this.client.delete(`/sessions/user/${userId}`);
-      return response.status === 200;
-
-    } catch (error) {
-      console.error('Error en closeAllUserSessions:', error);
-      // No es crítico si falla, continuar
-      return false;
-    }
-  }
-
-  /**
-   * Crea un log de auditoría
-   */
-  async createLog(userId, action, description) {
-    try {
-      // Si tu API tiene endpoint de logs, usarlo
-      // Si no, los triggers de BD lo manejarán automáticamente
-      const response = await this.client.post('/logs', {
-        usuario_id: userId,
-        accion: action,
-        descripcion: description
-      });
-
-      return response.status === 201 || response.status === 200;
-
-    } catch (error) {
-      console.error('Error en createLog:', error);
-      // Los logs son importantes pero no críticos
-      // Los triggers de BD crearán logs automáticamente
-      return false;
-    }
-  }
-
-  /**
-   * Obtiene información básica del usuario
-   */
-  async getUserInfo(userId) {
+  async getUserById(userId) {
     try {
       const response = await this.client.get(`/users/${userId}`);
-      return response.data;
-
+      return response.data.data || response.data;
     } catch (error) {
-      console.error('Error en getUserInfo:', error);
-      return null;
+      console.error(`❌ Error getting user ${userId}:`, error.message);
+      throw new Error(`No se pudo obtener el usuario: ${error.message}`);
     }
   }
 
-  /**
-   * Health check del API principal
-   */
+
+  async verifyCredentials(username, password) {
+    try {
+      const response = await this.client.post('/auth/login', {
+        usuario: username,
+        contrasena: password
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error verifying credentials:', error.message);
+      throw new Error('Credenciales inválidas');
+    }
+  }
+
+  async updateUser(userId, updateData) {
+    try {
+      const response = await this.client.put(`/users/${userId}`, updateData);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Error updating user ${userId}:`, error.message);
+      throw new Error(`No se pudo actualizar el usuario: ${error.message}`);
+    }
+  }
+
+  async updateUserPassword(userId, passwordData) {
+    try {
+      const response = await this.client.patch(`/users/${userId}/password`, passwordData);
+      return response.data.data || response.data;
+    } catch (error) {
+      console.error(`❌ Error updating password for user ${userId}:`, error.message);
+      throw new Error(`No se pudo actualizar la contraseña: ${error.message}`);
+    }
+  }
+
+
+  async enableMFA(userId, secret) {
+    try {
+      const response = await this.client.patch(`/users/${userId}/enable-mfa`, {
+        mfa_secreto: secret
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Error enabling MFA for user ${userId}:`, error.message);
+      throw new Error(`No se pudo habilitar MFA: ${error.message}`);
+    }
+  }
+
+  async disableMFA(userId) {
+    try {
+      const response = await this.client.patch(`/users/${userId}/disable-mfa`);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Error disabling MFA for user ${userId}:`, error.message);
+      throw new Error(`No se pudo deshabilitar MFA: ${error.message}`);
+    }
+  }
+
+  async updateMFASettings(userId, mfaData) {
+    try {
+      const response = await this.client.patch(`/users/${userId}/enable-mfa`, mfaData);
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Error updating MFA settings for user ${userId}:`, error.message);
+      throw new Error(`No se pudo actualizar MFA: ${error.message}`);
+    }
+  }
+
+  async createSession(userId, token) {
+    try {
+      const response = await this.client.post('/sessions', {
+        usuario_id: userId,
+        token: token
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`❌ Error creating session for user ${userId}:`, error.message);
+      throw new Error(`No se pudo crear la sesión: ${error.message}`);
+    }
+  }
+
+ 
+  async closeSession(token) {
+    try {
+      const response = await this.client.post('/sessions/logout', {}, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error closing session:', error.message);
+      throw new Error(`No se pudo cerrar la sesión: ${error.message}`);
+    }
+  }
+
+
   async healthCheck() {
     try {
-      const response = await this.client.get('/health', {
-        timeout: 5000
-      });
-      return response.status === 200;
+      const response = await this.client.get('/health');
+      return response.data;
     } catch (error) {
-      console.error('Health check failed:', error.message);
-      return false;
+      console.error('❌ Health check failed:', error.message);
+      return { status: 'error', message: error.message };
+    }
+  }
+
+
+  async getAuthenticatedUser(token) {
+    try {
+      const response = await this.client.get('/auth/me', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      return response.data.data || response.data;
+    } catch (error) {
+      console.error('❌ Error getting authenticated user:', error.message);
+      throw new Error(`No se pudo obtener usuario autenticado: ${error.message}`);
     }
   }
 }
 
-module.exports = new ApiClientService();
+module.exports = new ApiClient();
