@@ -1,20 +1,20 @@
-const apiClient = require('../services/apiClientService'); // ← CAMBIO: usar apiClient en lugar de db
+const apiClient = require('../services/apiClientService');
 const whatsappService = require('../services/whatsappService');
 const crypto = require('crypto');
 
-// Almacenamiento temporal de códigos (en producción usa Redis)
+// Almacenamiento temporal de codigos (en produccion usa Redis)
 const verificationCodes = new Map();
 const CODE_EXPIRY = 10 * 60 * 1000; // 10 minutos
 
 class RecoveryController {
-  // Paso 1: Solicitar código de verificación
+  // Paso 1: Solicitar codigo de verificacion
   async requestCode(req, res) {
     try {
       const { identifier } = req.body; // CI o correo
 
       if (!identifier) {
         return res.status(400).json({ 
-          error: 'Se requiere CI o correo electrónico' 
+          error: 'Se requiere CI o correo electronico' 
         });
       }
 
@@ -24,28 +24,28 @@ class RecoveryController {
       if (!user) {
         // Por seguridad, no revelar si el usuario existe o no
         return res.json({ 
-          message: 'Si el usuario existe, recibirá un código de verificación',
+          message: 'Si el usuario existe, recibira un codigo de verificacion',
           sent: false
         });
       }
 
-      // Verificar que el usuario esté activo
+      // Verificar que el usuario este activo
       if (user.activo !== 'activo') {
         return res.status(400).json({ 
-          error: 'El usuario no está activo' 
+          error: 'El usuario no esta activo' 
         });
       }
 
       if (!user.telefono) {
         return res.status(400).json({ 
-          error: 'El usuario no tiene un número de teléfono registrado' 
+          error: 'El usuario no tiene un numero de telefono registrado' 
         });
       }
 
-      // Generar código de 6 dígitos
+      // Generar codigo de 6 digitos
       const code = crypto.randomInt(100000, 999999).toString();
       
-      // Guardar código con expiración
+      // Guardar codigo con expiracion
       verificationCodes.set(user.usuario_id, {
         code,
         phone: user.telefono,
@@ -53,29 +53,29 @@ class RecoveryController {
         attempts: 0
       });
 
-      // Enviar código por WhatsApp (con nombre del usuario)
+      // Enviar codigo por WhatsApp (con nombre del usuario)
       const sent = await whatsappService.sendVerificationCode(
         user.telefono, 
         code,
-        user.nombre // ← CAMBIO: pasamos el nombre
+        user.nombre
       );
 
       if (!sent) {
         verificationCodes.delete(user.usuario_id);
         return res.status(500).json({ 
-          error: 'Error al enviar el código de verificación' 
+          error: 'Error al enviar el codigo de verificacion' 
         });
       }
 
-      // Log de auditoría
+      // Log de auditoria
       await apiClient.createLog(
         user.usuario_id,
         'SOLICITUD_CODIGO_RECUPERACION',
-        `Código enviado al teléfono ${this.maskPhone(user.telefono)}`
+        `Codigo enviado al telefono ${this.maskPhone(user.telefono)}`
       );
 
       res.json({ 
-        message: 'Código de verificación enviado por WhatsApp',
+        message: 'Codigo de verificacion enviado por WhatsApp',
         sent: true,
         expiresIn: CODE_EXPIRY / 1000 // segundos
       });
@@ -89,14 +89,14 @@ class RecoveryController {
     }
   }
 
-  // Paso 2: Verificar código
+  // Paso 2: Verificar codigo
   async verifyCode(req, res) {
     try {
       const { identifier, code } = req.body;
 
       if (!identifier || !code) {
         return res.status(400).json({ 
-          error: 'Se requiere identificador y código' 
+          error: 'Se requiere identificador y codigo' 
         });
       }
 
@@ -104,7 +104,7 @@ class RecoveryController {
 
       if (!user) {
         return res.status(400).json({ 
-          error: 'Código inválido o expirado' 
+          error: 'Codigo invalido o expirado' 
         });
       }
 
@@ -112,20 +112,20 @@ class RecoveryController {
 
       if (!storedData) {
         return res.status(400).json({ 
-          error: 'Código inválido o expirado' 
+          error: 'Codigo invalido o expirado' 
         });
       }
 
-      // Verificar expiración
+      // Verificar expiracion
       if (Date.now() > storedData.expiresAt) {
         verificationCodes.delete(user.usuario_id);
         await apiClient.createLog(
           user.usuario_id,
           'CODIGO_EXPIRADO',
-          'Intento de verificación con código expirado'
+          'Intento de verificacion con codigo expirado'
         );
         return res.status(400).json({ 
-          error: 'Código expirado, solicite uno nuevo' 
+          error: 'Codigo expirado, solicite uno nuevo' 
         });
       }
 
@@ -135,14 +135,14 @@ class RecoveryController {
         await apiClient.createLog(
           user.usuario_id,
           'INTENTOS_MAXIMOS_EXCEDIDOS',
-          'Máximo de intentos de verificación excedidos'
+          'Maximo de intentos de verificacion excedidos'
         );
         return res.status(429).json({ 
-          error: 'Máximo de intentos excedidos' 
+          error: 'Maximo de intentos excedidos' 
         });
       }
 
-      // Verificar código
+      // Verificar codigo
       if (storedData.code !== code) {
         storedData.attempts++;
         await apiClient.createLog(
@@ -151,12 +151,12 @@ class RecoveryController {
           `Intento fallido (${storedData.attempts}/3)`
         );
         return res.status(400).json({ 
-          error: 'Código incorrecto',
+          error: 'Codigo incorrecto',
           attemptsLeft: 3 - storedData.attempts
         });
       }
 
-      // Generar token temporal para cambio de contraseña
+      // Generar token temporal para cambio de contrasena
       const resetToken = crypto.randomBytes(32).toString('hex');
       const tokenExpiry = Date.now() + 15 * 60 * 1000; // 15 minutos
 
@@ -166,17 +166,17 @@ class RecoveryController {
         expiresAt: tokenExpiry
       });
 
-      // Limpiar código de verificación
+      // Limpiar codigo de verificacion
       verificationCodes.delete(user.usuario_id);
 
       await apiClient.createLog(
         user.usuario_id,
         'CODIGO_VERIFICADO',
-        'Código verificado correctamente'
+        'Codigo verificado correctamente'
       );
 
       res.json({ 
-        message: 'Código verificado correctamente',
+        message: 'Codigo verificado correctamente',
         resetToken,
         expiresIn: 15 * 60 // segundos
       });
@@ -184,13 +184,13 @@ class RecoveryController {
     } catch (error) {
       console.error('Error en verifyCode:', error);
       res.status(500).json({ 
-        error: 'Error al verificar el código',
+        error: 'Error al verificar el codigo',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   }
 
-  // Paso 3: Cambiar contraseña
+  // Paso 3: Cambiar contrasena
   async resetPassword(req, res) {
     try {
       const { identifier, resetToken, newPassword } = req.body;
@@ -201,10 +201,10 @@ class RecoveryController {
         });
       }
 
-      // Validar contraseña
+      // Validar contrasena
       if (newPassword.length < 8) {
         return res.status(400).json({ 
-          error: 'La contraseña debe tener al menos 8 caracteres' 
+          error: 'La contrasena debe tener al menos 8 caracteres' 
         });
       }
 
@@ -212,7 +212,7 @@ class RecoveryController {
 
       if (!user) {
         return res.status(400).json({ 
-          error: 'Token inválido o expirado' 
+          error: 'Token invalido o expirado' 
         });
       }
 
@@ -222,10 +222,10 @@ class RecoveryController {
         await apiClient.createLog(
           user.usuario_id,
           'TOKEN_RESET_INVALIDO',
-          'Intento de cambio de contraseña con token inválido'
+          'Intento de cambio de contrasena con token invalido'
         );
         return res.status(400).json({ 
-          error: 'Token inválido o expirado' 
+          error: 'Token invalido o expirado' 
         });
       }
 
@@ -236,12 +236,12 @@ class RecoveryController {
         });
       }
 
-      // Cambiar contraseña usando el API principal
+      // Cambiar contrasena usando el API principal
       const updated = await apiClient.updatePassword(user.usuario_id, newPassword);
 
       if (!updated) {
         return res.status(500).json({ 
-          error: 'Error al actualizar la contraseña' 
+          error: 'Error al actualizar la contrasena' 
         });
       }
 
@@ -254,30 +254,32 @@ class RecoveryController {
       await apiClient.createLog(
         user.usuario_id,
         'CONTRASENA_RESTABLECIDA',
-        'Contraseña restablecida exitosamente vía recuperación'
+        'Contrasena restablecida exitosamente via recuperacion'
       );
 
       res.json({ 
-        message: 'Contraseña actualizada correctamente',
+        message: 'Contrasena actualizada correctamente',
         success: true
       });
 
     } catch (error) {
       console.error('Error en resetPassword:', error);
       res.status(500).json({ 
-        error: 'Error al restablecer la contraseña',
+        error: 'Error al restablecer la contrasena',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   }
 
-  // Utilidad: Enmascarar número de teléfono
+  // Utilidad: Enmascarar numero de telefono
   maskPhone(phone) {
-    if (!phone || phone.length < 4) return '****';
-    return phone.slice(0, -4).replace(/\d/g, '*') + phone.slice(-4);
+    if (!phone) return '****';
+    const phoneStr = String(phone);
+    if (phoneStr.length < 4) return '****';
+    return phoneStr.slice(0, -4).replace(/\d/g, '*') + phoneStr.slice(-4);
   }
 
-  // Limpiar códigos expirados (llamar periódicamente)
+  // Limpiar codigos expirados (llamar periodicamente)
   cleanExpiredCodes() {
     const now = Date.now();
     for (const [key, data] of verificationCodes.entries()) {
@@ -288,7 +290,7 @@ class RecoveryController {
   }
 }
 
-// Limpiar códigos expirados cada 5 minutos
+// Limpiar codigos expirados cada 5 minutos
 setInterval(() => {
   const controller = new RecoveryController();
   controller.cleanExpiredCodes();
