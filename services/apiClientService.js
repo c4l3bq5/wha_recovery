@@ -10,28 +10,28 @@ class ApiClient {
       timeout: 10000,
       headers: {
         'Content-Type': 'application/json',
-        ...(MASTER_TOKEN && { 'Authorization': Bearer ${MASTER_TOKEN} })
+        ...(MASTER_TOKEN && { 'Authorization': `Bearer ${MASTER_TOKEN}` })
       }
     });
 
     this.client.interceptors.request.use(
       (config) => {
-        console.log(📤 API Request: ${config.method.toUpperCase()} ${config.url});
+        console.log(`API Request: ${config.method.toUpperCase()} ${config.url}`);
         return config;
       },
       (error) => {
-        console.error('📤 API Request Error:', error.message);
+        console.error('API Request Error:', error.message);
         return Promise.reject(error);
       }
     );
 
     this.client.interceptors.response.use(
       (response) => {
-        console.log(📥 API Response: ${response.status} ${response.config.url});
+        console.log(`API Response: ${response.status} ${response.config.url}`);
         return response;
       },
       (error) => {
-        console.error('📥 API Response Error:', error.response?.status, error.message);
+        console.error('API Response Error:', error.response?.status, error.message);
         return Promise.reject(error);
       }
     );
@@ -39,8 +39,8 @@ class ApiClient {
 
   async findUserByIdentifier(identifier) {
     try {
-      console.log(Buscando usuario por identifier: ${identifier});
-      const response = await this.client.get(/users/by-identifier/internal/${encodeURIComponent(identifier)});
+      console.log(`Buscando usuario por identifier: ${identifier}`);
+      const response = await this.client.get(`/users/by-identifier/internal/${encodeURIComponent(identifier)}`);
       const userData = response.data.data;
       
       if (userData && userData.id) {
@@ -55,8 +55,8 @@ class ApiClient {
           mail: userData.persona.mail
         };
         
-        console.log(Usuario encontrado: ${result.usuario});
-        console.log(Telefono: ${result.telefono});
+        console.log(`Usuario encontrado: ${result.usuario}`);
+        console.log(`Telefono: ${result.telefono}`);
         return result;
       }
       
@@ -75,15 +75,15 @@ class ApiClient {
 
   async updatePassword(userId, newPassword) {
     try {
-      console.log(Actualizando contraseña para usuario ${userId});
-      const response = await this.client.patch(/users/${userId}/internal/password, {
+      console.log(`Actualizando contrasena para usuario ${userId}`);
+      const response = await this.client.patch(`/users/${userId}/internal/password`, {
         contrasena: newPassword,
         es_temporal: false
       });
-      console.log('Contraseña actualizada');
+      console.log('Contrasena actualizada');
       return true;
     } catch (error) {
-      console.error(Error updating password for user ${userId}:, error.message);
+      console.error(`Error updating password for user ${userId}:`, error.message);
       return false;
     }
   }
@@ -107,23 +107,23 @@ class ApiClient {
 
   async closeAllUserSessions(userId) {
     try {
-      console.log(Cerrando todas las sesiones del usuario ${userId});
-      const response = await this.client.delete(/sessions/user/${userId});
+      console.log(`Cerrando todas las sesiones del usuario ${userId}`);
+      const response = await this.client.delete(`/sessions/user/${userId}`);
       console.log('Sesiones cerradas');
       return response.data;
     } catch (error) {
-      console.error(Error closing sessions for user ${userId}:, error.message);
+      console.error(`Error closing sessions for user ${userId}:`, error.message);
       return null;
     }
   }
 
   async getUserById(userId) {
     try {
-      const response = await this.client.get(/users/${userId}/internal);
+      const response = await this.client.get(`/users/${userId}/internal`);
       return response.data.data || response.data;
     } catch (error) {
-      console.error(Error getting user ${userId}:, error.message);
-      throw new Error(No se pudo obtener el usuario: ${error.message});
+      console.error(`Error getting user ${userId}:`, error.message);
+      throw new Error(`No se pudo obtener el usuario: ${error.message}`);
     }
   }
 
@@ -139,3 +139,5 @@ class ApiClient {
 }
 
 module.exports = new ApiClient();
+
+ 
